@@ -1,24 +1,5 @@
 #include "socks5.hpp"
 
-#include <boost/beast/core.hpp>
-#include <boost/beast/websocket.hpp>
-#include <boost/asio/spawn.hpp>
-#include <boost/asio/streambuf.hpp>
-#include <boost/asio/buffer.hpp>
-#include <boost/asio.hpp>
-#include <algorithm>
-#include <cstdlib>
-#include <functional>
-#include <iostream>
-#include <memory>
-#include <string>
-#include <thread>
-#include <vector>
-
-namespace beast = boost::beast;         // from <boost/beast.hpp>
-namespace ba = boost::asio;             // from <boost/asio.hpp>
-using ba_tcp = boost::asio::ip::tcp;    // from <boost/asio/ip/tcp.hpp>
-
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/expressions.hpp>
@@ -29,17 +10,30 @@ using ba_tcp = boost::asio::ip::tcp;    // from <boost/asio/ip/tcp.hpp>
 #include <boost/log/support/date_time.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 
+namespace study
+{
+
+//namespace beast = boost::beast;
+namespace ba = boost::asio;
+
+using boost_ipv4 = boost::asio::ip::address_v4;
+using error_code = boost::system::error_code;
+using tcp_socket = boost::asio::ip::tcp::socket;
+using boost_endpoint = boost::asio::ip::tcp::endpoint;
+using boost_resolver = boost::asio::ip::tcp::resolver;
+using boost_acceptor = boost::asio::ip::tcp::acceptor;
+
 // Accepts incoming connections and launches the sessions
 void
 do_listen(
     ba::io_context& ioc,
-    ba_tcp::endpoint endpoint,
+    boost_endpoint endpoint,
     ba::yield_context yield)
 {
     boost::system::error_code ec;
 
     // Open the acceptor
-    ba_tcp::acceptor acceptor(ioc);
+    boost_acceptor acceptor(ioc);
     acceptor.open(endpoint.protocol(), ec);
     if(ec)
         throw std::runtime_error("open acceptor: " + ec.message());
@@ -61,7 +55,7 @@ do_listen(
 
     for(;;)
     {
-        ba_tcp::socket socket{ba::make_strand(acceptor.get_executor())};
+        tcp_socket socket{ba::make_strand(acceptor.get_executor())};
         acceptor.async_accept(socket, yield[ec]);
         if(ec)
             throw std::runtime_error("acception socket: " + ec.message());
@@ -89,9 +83,11 @@ void do_my_log_format()
        boost::log::add_common_attributes();
 }
 
+} // study
+
 int main(int argc, char* argv[]) try
 {
-    do_my_log_format();
+    study::do_my_log_format();
 
     if (argc != 3)
     {
@@ -105,14 +101,14 @@ int main(int argc, char* argv[]) try
     auto const threads = std::max<int>(1, std::atoi(argv[2]));
 
     // The io_context is required for all I/O
-    ba::io_context ioc{threads};
+    study::ba::io_context ioc{threads};
 
     // Spawn a listening port
-    ba::spawn(ioc,
+    study::ba::spawn(ioc,
         std::bind(
-            &do_listen,
+            &study::do_listen,
             std::ref(ioc),
-            ba_tcp::endpoint{ba_tcp::v4(), port},  // any IPv4 address
+            study::boost_endpoint{study::boost_ipv4(), port},  // any IPv4 address
             std::placeholders::_1));
 
     BOOST_LOG_TRIVIAL(info) << "Spawned listening port";
