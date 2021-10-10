@@ -61,7 +61,7 @@ do_listen(
             throw std::runtime_error("acception socket: " + ec.message());
         else
         {
-            BOOST_LOG_TRIVIAL(info) << "Socket accepted";
+            BOOST_LOG_TRIVIAL(trace) << "Socket accepted";
 
             if (!ec)
                 std::make_shared<socks5::Session>(std::move(socket))->go();
@@ -71,16 +71,50 @@ do_listen(
 
 void do_my_log_format()
 {
+    // \033[40m green
+    // \033[39m light white
+    // \033[38m green (again)
+    // \033[37m white
+    // \033[36m cyan
+    // \033[35m pink
+    // \033[34m dark blue
+    // \033[32m green (again)
+    // \033[31m red
+    // \022[20m black
     auto sink = boost::log::add_console_log(std::cout);
+    namespace expr = boost::log::expressions;
+    namespace logging = boost::log;
     sink->set_formatter
        (
-           boost::log::expressions::stream << "["  << boost::log::trivial::severity << "]"
+           expr::stream <<
+                expr::if_(logging::trivial::severity <= logging::trivial::severity_level::debug)
+                [
+                    expr::stream << "\033[36m"
+                ]
+                .else_
+                [
+                    expr::stream << expr::if_(logging::trivial::severity <= logging::trivial::severity_level::info)
+                    [
+                         expr::stream << "\033[37m"
+                    ]
+                    .else_
+                    [
+                         expr::stream << expr::if_(logging::trivial::severity <= logging::trivial::severity_level::error)
+                         [
+                              expr::stream << "\033[31m"
+                         ]
+                    ]
+                ]
+                << "["  << boost::log::trivial::severity << "]"
                 << " [" << boost::log::expressions::format_date_time< boost::posix_time::ptime >("TimeStamp", "%H:%M:%S.%f") << "]"
                 << " [" << boost::log::expressions::attr<boost::log::attributes::current_thread_id::value_type>("ThreadID") << "] "
                 << boost::log::expressions::smessage
        );
-       sink->imbue(sink->getloc());
-       boost::log::add_common_attributes();
+#ifdef NDEBUG
+    logging::core::get()->set_filter(logging::trivial::severity >= logging::trivial::info);
+#endif
+    sink->imbue(sink->getloc());
+    boost::log::add_common_attributes();
 }
 
 } // study
@@ -116,7 +150,7 @@ int main(int argc, char* argv[]) try
     // Run the I/O service on the requested number of threads
     std::vector<std::thread> v;
     v.reserve(threads - 1);
-    for(auto i = threads - 1; i > 0; --i)
+    for(int i = 1; i < threads; ++i)
     {
         v.emplace_back([&ioc]{ ioc.run(); });
         BOOST_LOG_TRIVIAL(info) << "Added thread";

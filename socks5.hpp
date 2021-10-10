@@ -14,6 +14,7 @@
 #include <boost/asio/buffer.hpp>
 #include <iostream>
 #include <memory>
+#include <string_view>
 
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
@@ -82,7 +83,7 @@ enum
 //from boost example
 class Session : public std::enable_shared_from_this<Session> {
 public:
-    explicit Session(tcp_socket client_socket, std::size_t buffer_size = 2046, std::size_t timeout = 60);
+    explicit Session(tcp_socket client_socket, std::size_t buffer_size = (1 << 14), std::size_t timeout = 60);
     void go();
 
 private:
@@ -107,6 +108,7 @@ private:
     boost_resolver resolver;
     std::size_t buffer_size;
     std::chrono::seconds timeout;
+    std::string displayed_address;
 };
 
 

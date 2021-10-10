@@ -6,24 +6,24 @@ namespace study
 {
 
 template<typename T>
-void print_byte_sequence(const std::size_t& bytes, const T& buf, const std::string& action)
+void print_byte_sequence(std::size_t bytes, const T& buf, const std::string& action)
 {
     std::stringstream ss;
     ss << action << ": [ ";
     for (std::size_t i = 0; i < bytes; ++i)
-        ss << std::hex << static_cast<int>(buf[i]) << ' ';
+    {
+        ss << std::hex << std::internal << std::setfill('0')
+           << std::setw(2) << (0xff & static_cast<int>(buf[i])) << ' ';
+    }
     ss << ']';
-    BOOST_LOG_TRIVIAL(info) << ss.str();
+    BOOST_LOG_TRIVIAL(trace) << ss.str();
 }
 
 template<typename T>
-void print_str_byte_sequence(const std::size_t& bytes, const T& buf, const std::string& action)
+void print_str_byte_sequence(std::size_t bytes, const T& buf, const std::string& action)
 {
-    std::stringstream ss;
-    ss << action << ": ";
-    for (std::size_t i = 0; i < bytes; ++i)
-        ss << (char)(+buf[i]);
-    BOOST_LOG_TRIVIAL(info) << ss.str();
+    std::string_view str(reinterpret_cast<const char*>(buf.data()), bytes);
+    BOOST_LOG_TRIVIAL(trace) << action << ": " << str;
 }
 
 bool check_ec(error_code ec, const std::string& ec_text = "Fail: ")
@@ -43,13 +43,13 @@ Session::Session(tcp_socket client_socket, std::size_t buffer_size, std::size_t 
           client_buf(buffer_size),
           resolver(client_socket.get_executor()),
           buffer_size(buffer_size),
-          timeout(timeout) {
-}
+          timeout(timeout)
+{}
 
 bool Session::handshake(const ba::yield_context& yield, const std::shared_ptr<Session>& self)
 {
     error_code ec;
-    BOOST_LOG_TRIVIAL(info) << "Local address: " << self->socket_to_string() << " | Endpoint: " << self->endpoint_to_string() << std::endl;
+    BOOST_LOG_TRIVIAL(trace) << "Local address: " << self->socket_to_string() << " | Endpoint: " << self->endpoint_to_string() << std::endl;
 
 //---------------------------------------------GREETINGS-------------------------------------------------------------
 
@@ -171,24 +171,34 @@ bool Session::handshake(const ba::yield_context& yield, const std::shared_ptr<Se
 
             byte_t domain_name_length = self->client_buf[0];
             self->client_stream.expires_after(self->timeout);
-            readed_bytes = ba::async_read(self->client_stream, ba::buffer(self->client_buf, domain_name_length + 2), yield[ec]);
+            ba::async_read(self->client_stream, ba::buffer(self->client_buf, domain_name_length + 2), yield[ec]);
             if(!check_ec(ec, "reading domain name: ")) return false;
 
-            print_str_byte_sequence(domain_name_length, self->client_buf, "Read domain name");
+            self->displayed_address = std::string(self->client_buf.begin(), self->client_buf.begin() + domain_name_length);
+//            std::string str_port(self->client_buf.begin() + domain_name_length, self->client_buf.end());
+
+            std::uint16_t port;
+            std::memcpy(&port, client_buf.data() + domain_name_length, 2);
+            std::string str_port = std::to_string(boost::endian::big_to_native(port));
+
+            self->displayed_address += std::string(":") + str_port;
+            BOOST_LOG_TRIVIAL(trace) << "Read domain name: " << self->displayed_address;
 
             self->resolve_domain_name(yield, ec, domain_name_length);
         }
         else // 'cause of logic is_command_request_valid always ATYP_IPV4
         {
             self->client_stream.expires_after(self->timeout);
-            readed_bytes = ba::async_read(self->client_stream, ba::buffer(self->client_buf, 6), yield[ec]);
+            ba::async_read(self->client_stream, ba::buffer(self->client_buf, 6), yield[ec]);
 
             if(!check_ec(ec, "reading ip4 address and port: ")) return false;
 
             self->endpoint = boost_endpoint(boost_ipv4(boost::endian::big_to_native(*((uint32_t *) &self->client_buf[0]))),
                                                        boost::endian::big_to_native(*((uint16_t *) &self->client_buf[4])));
 
-            BOOST_LOG_TRIVIAL(info) << "Readed endpoint: " << self->endpoint_to_string();
+            self->displayed_address = self->endpoint_to_string();
+
+            BOOST_LOG_TRIVIAL(trace) << "Readed endpoint: " << self->displayed_address;
         }
     }
 
@@ -203,6 +213,7 @@ bool Session::handshake(const ba::yield_context& yield, const std::shared_ptr<Se
         if(!check_ec(ec, "Async connection to remote server: "))
         {
             self->command_answer[1] = NETWORK_UNREACHABLE;
+            BOOST_LOG_TRIVIAL(warning) << "Can't connect to " << self->endpoint_to_string();
         }
         else
         {
@@ -210,6 +221,10 @@ bool Session::handshake(const ba::yield_context& yield, const std::shared_ptr<Se
             uint16_t real_local_port = boost::endian::big_to_native(self->remote_stream.socket().local_endpoint().port());
             std::memcpy(&self->command_answer[4], &real_local_ip, 4);
             std::memcpy(&self->command_answer[8], &real_local_port, 2);
+
+            std::string client_ip = self->client_stream.socket().local_endpoint().address().to_string();
+            std::string client_port = std::to_string(boost::endian::big_to_native(self->client_stream.socket().local_endpoint().port()));
+            BOOST_LOG_TRIVIAL(info) << "Connected: " << client_ip << ':' << client_port << " to " << self->displayed_address;
         }
     }
 
@@ -291,13 +306,17 @@ bool Session::is_command_request_valid()
 
 void Session::resolve_domain_name(const ba::yield_context &yield, error_code ec, byte_t domain_name_length)
 {
-    std::string remote_host(client_buf.begin(), client_buf.begin() + domain_name_length);
-    std::string remote_port = std::to_string(boost::endian::big_to_native(*((uint16_t *) &client_buf[domain_name_length])));
+    std::string remote_host(reinterpret_cast<char*>(client_buf.data()), domain_name_length);
+    std::uint16_t port;
+    std::memcpy(&port, client_buf.data() + domain_name_length, 2);
+//    std::string str_port = std::to_string(port);
+//    std::string remote_port = std::to_string(boost::endian::big_to_native(*((uint16_t *) &client_buf[domain_name_length])));
+    std::string remote_port = std::to_string(boost::endian::big_to_native(port));
     boost_resolver::query query(remote_host, remote_port);
     boost_resolver::iterator endpoint_iterator = resolver.async_resolve(query, yield[ec]);
     if (ec)
     {
-        std::cout << "Failed to resolve domain name" << std::endl;
+        BOOST_LOG_TRIVIAL(error) << "Failed to resolve domain name" << std::endl;
         command_answer[1] = NETWORK_UNREACHABLE;
         return;
     }
@@ -315,8 +334,7 @@ std::string Session::socket_to_string() const
 
 std::string Session::endpoint_to_string() const
 {
-    return endpoint.address().to_string() + ":" +
-           std::to_string(endpoint.port());
+    return endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
 }
 
 } // socks5
