@@ -51,7 +51,7 @@ bool Session::handshake(const ba::yield_context& yield, const std::shared_ptr<Se
     error_code ec;
     BOOST_LOG_TRIVIAL(trace) << "Local address: " << self->socket_to_string() << " | Endpoint: " << self->endpoint_to_string() << std::endl;
 
-//---------------------------------------------GREETINGS-------------------------------------------------------------
+//---------------------------------------------GREETINGS---------------------------------------------
 
 //    Client send greetings:
 //    +----+----------+----------+
@@ -120,7 +120,7 @@ bool Session::handshake(const ba::yield_context& yield, const std::shared_ptr<Se
     }
 
 
-//----------------------------------------REQUEST---------------------------------------------------
+//----------------------------------------REQUEST---------------------------------------------
 
 //    The SOCKS client request is formed as follows:
 
@@ -175,7 +175,6 @@ bool Session::handshake(const ba::yield_context& yield, const std::shared_ptr<Se
             if(!check_ec(ec, "reading domain name: ")) return false;
 
             self->displayed_address = std::string(self->client_buf.begin(), self->client_buf.begin() + domain_name_length);
-//            std::string str_port(self->client_buf.begin() + domain_name_length, self->client_buf.end());
 
             std::uint16_t port;
             std::memcpy(&port, client_buf.data() + domain_name_length, 2);
@@ -202,7 +201,7 @@ bool Session::handshake(const ba::yield_context& yield, const std::shared_ptr<Se
         }
     }
 
-//------------------------------------------CONNECTION--WITH--REMOTE-----------------------------------------------
+//-------------------------------CONNECTION--WITH--REMOTE-------------------------------
 
     // command_answer may have non-default SUCCEEDED value 'cause of checking previous client request
     if (self->command_answer[1] == SUCCEEDED)
@@ -309,14 +308,11 @@ void Session::resolve_domain_name(const ba::yield_context &yield, error_code ec,
     std::string remote_host(reinterpret_cast<char*>(client_buf.data()), domain_name_length);
     std::uint16_t port;
     std::memcpy(&port, client_buf.data() + domain_name_length, 2);
-//    std::string str_port = std::to_string(port);
-//    std::string remote_port = std::to_string(boost::endian::big_to_native(*((uint16_t *) &client_buf[domain_name_length])));
     std::string remote_port = std::to_string(boost::endian::big_to_native(port));
     boost_resolver::query query(remote_host, remote_port);
     boost_resolver::iterator endpoint_iterator = resolver.async_resolve(query, yield[ec]);
-    if (ec)
+    if (!check_ec(ec, "Resolve domain name: "))
     {
-        BOOST_LOG_TRIVIAL(error) << "Failed to resolve domain name" << std::endl;
         command_answer[1] = NETWORK_UNREACHABLE;
         return;
     }

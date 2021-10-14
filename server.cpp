@@ -71,16 +71,6 @@ do_listen(
 
 void do_my_log_format()
 {
-    // \033[40m green
-    // \033[39m light white
-    // \033[38m green (again)
-    // \033[37m white
-    // \033[36m cyan
-    // \033[35m pink
-    // \033[34m dark blue
-    // \033[32m green (again)
-    // \033[31m red
-    // \022[20m black
     auto sink = boost::log::add_console_log(std::cout);
     namespace expr = boost::log::expressions;
     namespace logging = boost::log;
@@ -101,7 +91,7 @@ void do_my_log_format()
                     [
                          expr::stream << expr::if_(logging::trivial::severity <= logging::trivial::severity_level::error)
                          [
-                              expr::stream << "\033[31m"
+                              expr::stream << "\033[33m"
                          ]
                     ]
                 ]

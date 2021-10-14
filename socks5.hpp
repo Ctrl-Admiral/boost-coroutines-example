@@ -102,8 +102,8 @@ private:
     std::vector<byte_t> client_buf;
     byte_t connect_answer[2]  = {SOCKS_VER, AUTH_UNACCEPTABLE};
     byte_t command_answer[10] = {SOCKS_VER, SUCCEEDED, RSV, ATYP_IPV4,
-                                       BNDADDR_DEFAULT_BYTE, BNDADDR_DEFAULT_BYTE, BNDADDR_DEFAULT_BYTE, BNDADDR_DEFAULT_BYTE,
-                                       BNDPORT_DEFAULT_BYTE, BNDPORT_DEFAULT_BYTE};
+                                 BNDADDR_DEFAULT_BYTE, BNDADDR_DEFAULT_BYTE, BNDADDR_DEFAULT_BYTE, BNDADDR_DEFAULT_BYTE,
+                                 BNDPORT_DEFAULT_BYTE, BNDPORT_DEFAULT_BYTE};
     boost_endpoint endpoint;
     boost_resolver resolver;
     std::size_t buffer_size;
